@@ -1,16 +1,36 @@
 import Database from "better-sqlite3";
 import path from "path";
+import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import bcryptjs from "bcryptjs";
 
-const DB_PATH = path.join(process.cwd(), "vmc-hmi.db");
+function getDbPath(): string {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const tmpPath = path.join("/tmp", "vmc-hmi.db");
+    const localDbPath = path.join(process.cwd(), "vmc-hmi.db");
+    if (!fs.existsSync(tmpPath) && fs.existsSync(localDbPath)) {
+      try {
+        fs.copyFileSync(localDbPath, tmpPath);
+      } catch (e) {
+        console.warn("Could not copy seed database file to /tmp:", e);
+      }
+    }
+    return tmpPath;
+  }
+  return path.join(process.cwd(), "vmc-hmi.db");
+}
 
 let _db: Database.Database | null = null;
 
 function getDb(): Database.Database {
   if (!_db) {
-    _db = new Database(DB_PATH);
-    _db.pragma("journal_mode = WAL");
+    const dbPath = getDbPath();
+    _db = new Database(dbPath);
+    try {
+      _db.pragma("journal_mode = WAL");
+    } catch {
+      _db.pragma("journal_mode = DELETE");
+    }
     _db.pragma("foreign_keys = ON");
     initializeDb(_db);
   }
